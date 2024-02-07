@@ -1,0 +1,159 @@
+---
+title: "South Africa’s Monetary Policy Committee Statement (Jan 2024) - Bigram Analysis"
+author: "Kudzanai Tsunga"
+date: "2024-02-06"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## South Africa's Monetary Policy Committee Statement (Jan 2024) - Bigram Analysis
+
+This a summary of the South African Reserve Bank's Monetary Policy Committee (MPC) statement using bigrams. The statement is avialable from: https://www.resbank.co.za/en/home/publications/statements/mpc-statements
+
+## Summary of MPC Statement 
+The statement highlights that global economic conditions are uncertain despite easing headline inflation. In addition,  it notes that advanced and emerging economies anticipate modest growth, prioritizing inflation targets, fiscal deficits, and debt reduction. Geo-political tensions and climate change add to the uncertainty, impacting supply chains and prices. South Africa's GDP growth is sluggish due to port, rail, and electricity constraints. Despite some improvements, inflation risks persist, especially regarding fuel and food prices. Global financial conditions are tight, raising risks for economies needing foreign capital like South Africa. Inflation expectations remain high, prompting the MPC to maintain a restrictive policy stance.The Committee recommends strengthening economic conditions by managing debt, enhancing energy supply, and maintaining stable wage growth. Monetary policy effectiveness is crucial for broader economic stability amidst ongoing uncertainties
+
+## Bigram Analysis of the MPC Statement 
+A bigram network analysis enables us to elucidate the key details of the monetary policy statement. 
+
+``` {r }
+# loading libraries 
+library(tidytext)
+library(janeaustenr)
+library(readr)
+library(dplyr)
+
+# loading the monetary policy statement text file, setting a two-word bigram and and removing stopwords 
+text <- read_csv("mpc_25012024.csv")
+mpc_bigrams <- text %>% 
+  unnest_tokens(bigram, notes, token = "ngrams", n = 2)
+
+# cleaning the text file to remove the for stop words 
+
+library(tidyr)
+bigrams_separated <- mpc_bigrams %>%
+  separate(bigram, c("word1", "word2"), sep = " ")
+
+bigrams_filtered <- bigrams_separated %>%
+  filter(!word1 %in% stop_words$word) %>%
+    filter(!word2 %in% stop_words$word)
+```
+
+After removing the stopwords, the new MPC bigrams are now as follows: 
+
+``` {r }
+bigram_counts <- bigrams_filtered %>% 
+  count(word1, word2, sort = TRUE)
+
+bigram_counts
+```
+
+Using tidyr’s unite() function whic is the opposite of separate() combines the word1 and word2 columns into one. In other analyses, working with recombined words is better; the one-bigram-per-row format is helpful for exploratory analyses of the text. 
+
+From the bigrams above, it was evident that inflation was common in the top 5 bigrams. The following unites the bigrams and filters for "inflation" 
+
+``` {r }
+bigrams_united <- bigrams_filtered %>%
+  unite(bigram, word1, word2, sep = " ")
+
+bigrams_united
+
+bigrams_filtered %>%
+  filter(word1 == "inflation") %>%
+  count(word1, word2, sort = TRUE)  
+```
+
+Text analysis on bigrams within the dataset bigrams_united, 
+computes their TF-IDF scores within each administrative region, and then arranges them in descending order based on their importance.
+
+``` {r }
+bigram_tf_idf <- bigrams_united %>%
+  count(admin1, bigram) %>%
+  bind_tf_idf(bigram, admin1, n) %>%
+  arrange(desc(tf_idf))
+
+bigram_tf_idf 
+```
+
+Visualising the bigram analysis on an a graph using ```igraph``` begins with setting the minimum number of combinations to 2 (n = 2) [or as required]: 
+
+``` {r } 
+## Visualizing a network of bigrams with ggraph
+
+library(igraph)
+
+bigram_graph <- bigram_counts %>%
+  filter(n >= 2) %>%
+    graph_from_data_frame()
+
+bigram_graph
+```
+
+Plotting the bigram graph using ```ggraph``` 
+ 
+
+``` {r }
+library(ggraph)
+set.seed(2017)
+
+ggraph(bigram_graph, layout = "fr") +
+  geom_edge_link() +
+  geom_node_point() + theme_bw() +
+  geom_node_text(aes(label = name), vjust = 1, hjust = 0.45)
+```
+
+In line with the ```bigram_counts``` from above, the word relationships from the ```ggraph``` shows inflation being the main centre node. additionally, economic growth was a commoth theme of the staement. 
+
+While the network showed the links and centre nodes of the MPC statement, additional information about the direction of relationship and the number of times the bigrams were counted aids the analysis. 
+
+``` {r }
+
+set.seed(2020)
+
+a <- grid::arrow(type = "closed", length = unit(.15, "inches"))
+
+ggraph(bigram_graph, layout = "fr") +
+  geom_edge_link(aes(edge_alpha = n), show.legend = TRUE,
+                 arrow = a, end_cap = circle(.07, 'inches')) +
+  geom_node_point(color = "lightgreen", size = 4) +
+  geom_node_text(aes(label = name), vjust = 1, hjust = 0.45) +
+  theme_void()
+```
+
+As already established, inflation was the central theme its outlooked remained sensitive: "price inflation" was mentioned 6 times and "inflation expectations" five times. This suggested that forecasted inflation remained a concern for the MPC and this was compounded by global economic uncertainty. The bigram shows that the food inflation and wage growth were concern and inform the MPC to maintain a restrictive policy stance by keeping interest rates elevated. 
+
+A quick ```wordcloud``` plot of the MPC statement complements the bigram. 
+
+``` {r }
+#install libraries
+library("tm") #load library
+library("SnowballC") #load library
+library("wordcloud") #load library
+library("RColorBrewer") #load library
+library(readr)
+
+text_data <- read_lines("mpc_25012024")
+  docs <- Corpus(VectorSource(text_data))
+    docs <- tm_map(docs, removeWords, stopwords("english"))
+      docs <- tm_map(docs, removePunctuation)
+
+#create the document matrix (table containing the word frequency)
+dtm <- TermDocumentMatrix(docs)
+    m <- as.matrix(dtm)
+    v <- sort(rowSums(m),decreasing = TRUE)
+    d <- data.frame(word = names(v),freq = v)
+
+set.seed(1234)
+wordcloud(words = d$word, freq = d$freq, min.freq = 3,
+          max.words = 100, random.order = FALSE, rot.per = -0.5, 
+          colors = brewer.pal(8, "Dark2"),
+          scale = c(3, 0.5))
+```
+
+
+
+### References
+Julia Silge & David Robinson (2024). "Text Mining with R: A Tidy Approach". Available from: https://www.tidytextmining.com/ngrams
